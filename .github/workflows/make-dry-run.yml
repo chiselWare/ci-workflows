@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout caller repo
-        uses: actions/checkout@v4
+        uses: chiselWare/actions-checkout@v4
 
       - name: Make dry-run
         shell: bash
@@ -33,7 +33,7 @@ jobs:
 
       - name: Upload dry-run output
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: chiselWare/actions-upload-artifact@v4
         with:
           name: make-dry-run
           path: |
