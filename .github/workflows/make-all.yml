@@ -1,0 +1,46 @@
+name: Reusable Workflow - Make All
+
+on:
+  workflow_call:
+    inputs:
+      make_target:
+        required: false
+        type: string
+        default: "all"
+      make_dir:
+        required: false
+        type: string
+        default: "."
+      runner_labels:
+        description: 'JSON array of runner labels, e.g. ["self-hosted","local-ci"]'
+        required: false
+        type: string
+        default: '["self-hosted","local-ci"]'
+      artifacts_path:
+        description: 'Glob(s) to upload on completion'
+        required: false
+        type: string
+        default: '["out/**","logs/**","reports/**","**/*.log","**/*.rpt","**/*.pdf","**/*design-review*.html"]'
+
+jobs:
+  make-all:
+    name: make ${{ inputs.make_target }}
+    runs-on: ${{ fromJson(inputs.runner_labels) }}
+    steps:
+      - name: Checkout caller repo
+        uses: chiselWare/actions-checkout@v4
+
+      - name: Run make
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${{ inputs.make_dir }}"
+          make "${{ inputs.make_target }}"
+
+      - name: Upload artifacts (always)
+        if: always()
+        uses: chiselWare/actions-upload-artifact@v4
+        with:
+          name: make-artifacts
+          path: ${{ join(fromJson(inputs.artifacts_path), '\n') }}
+          if-no-files-found: warn
