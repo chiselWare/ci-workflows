@@ -37,10 +37,31 @@ jobs:
           cd "${{ inputs.make_dir }}"
           make "${{ inputs.make_target }}"
 
-      - name: Upload artifacts (always)
+      - name: Check error report
+        shell: bash
+        run: |
+          set -euo pipefail
+          mod="${{ inputs.module_name }}"
+          rpt="modules/${mod}/generated/error.rpt"
+
+          if [[ ! -f "$rpt" ]]; then
+            echo "ERROR: missing error report: $rpt"
+            exit 2
+          fi
+
+          if [[ -s "$rpt" ]]; then
+            echo "ERROR: error report is non-empty (regression failed): $rpt"
+            echo "---- first 200 lines ----"
+            sed -n '1,200p' "$rpt" || true
+            exit 3
+          fi
+
+          echo "OK: $rpt exists and is empty."
+
+      - name: Upload error report (always)
         if: always()
         uses: chiselWare/actions-upload-artifact@v4
         with:
-          name: make-artifacts
-          path: ${{ join(fromJson(inputs.artifacts_path), '\n') }}
-          if-no-files-found: warn
+          name: regression-error-report
+          path: modules/${{ inputs.module_name }}/generated/error.rpt
+          if-no-files-found: error
