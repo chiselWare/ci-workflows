@@ -1,4 +1,4 @@
-name: Reusable Workflow - Make All
+name: Core regression (make all)
 
 on:
   workflow_call:
@@ -16,19 +16,13 @@ on:
         type: string
         default: "."
       runner_labels:
-        description: 'JSON array of runner labels, e.g. ["self-hosted","local-ci"]'
+        description: 'Runner labels, e.g. ["self-hosted","local-ci"]'
         required: false
         type: string
         default: '["self-hosted","local-ci"]'
-      artifacts_path:
-        description: 'Glob(s) to upload on completion'
-        required: false
-        type: string
-        default: '["out/**","logs/**","reports/**","**/*.log","**/*.rpt","**/*.pdf","**/*design-review*.html"]'
-
 jobs:
   make-all:
-    name: make ${{ inputs.make_target }}
+    name: "${{ github.repository }} – make all"
     runs-on: ${{ fromJson(inputs.runner_labels) }}
     steps:
       - name: Checkout caller repo
@@ -54,7 +48,7 @@ jobs:
           fi
 
           if [[ -s "$rpt" ]]; then
-            echo "ERROR: error report is non-empty (regression failed): $rpt"
+            echo "ERROR: error report contains errors: $rpt"
             echo "---- first 200 lines ----"
             sed -n '1,200p' "$rpt" || true
             exit 3
