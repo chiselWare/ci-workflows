@@ -75,8 +75,16 @@ jobs:
           sby --help >/dev/null 2>&1 && echo "sby: present"
           exit 0
 
-      # GitHub sets HOME=/github/home inside container jobs, so any caches
-      # pre-seeded in the image user's home are not visible. Cache them here.
+      # Cache key computed inside the container rather than with hashFiles(),
+      # which is evaluated on the host and fails on some container-job
+      # workspaces. This also respects working_directory.
+      - name: Compute build-definition hash
+        id: buildhash
+        run: |
+          hash=$(cat build.sbt project/build.properties project/*.sbt 2>/dev/null \
+                 | sha256sum | cut -c1-16)
+          echo "hash=$hash" >> "$GITHUB_OUTPUT"
+
       - name: Cache sbt / coursier / ivy
         uses: actions/cache@v4
         with:
@@ -84,7 +92,7 @@ jobs:
             ~/.cache/coursier
             ~/.ivy2/cache
             ~/.sbt
-          key: sbt-${{ runner.os }}-${{ hashFiles('**/build.sbt', 'project/build.properties', 'project/*.sbt') }}
+          key: sbt-${{ runner.os }}-${{ steps.buildhash.outputs.hash }}
           restore-keys: |
             sbt-${{ runner.os }}-
 
