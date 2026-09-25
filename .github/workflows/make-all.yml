@@ -1,59 +1,103 @@
-name: Core regression (make all)
+name: make-all
+
+# Reusable workflow: runs `make <target>` for a chiselWare core inside the
+# chiselWare dev container on a GitHub-hosted runner.
+#
+# Caller example (identical in every core repo):
+#   jobs:
+#     make-all:
+#       uses: chiselWare/ci-workflows/.github/workflows/make-all.yml@v0
 
 on:
   workflow_call:
     inputs:
       make_target:
+        description: "Makefile target to run"
         required: false
         type: string
         default: "all"
-      make_dir:
+      container_image:
+        description: "Container image providing the chiselWare toolchain"
+        required: false
+        type: string
+        default: "ghcr.io/chiselware/dev-full:0.8.0"
+      runs_on:
+        description: "Runner label (GitHub-hosted by default)"
+        required: false
+        type: string
+        default: "ubuntu-latest"
+      working_directory:
+        description: "Directory containing the Makefile"
         required: false
         type: string
         default: "."
-      runner_labels:
-        description: 'Runner labels, e.g. ["self-hosted","local-ci"]'
+      timeout_minutes:
+        description: "Job timeout"
         required: false
-        type: string
-        default: '["self-hosted","local-ci"]'
+        type: number
+        default: 60
+
 jobs:
-  make-all:
-    name: "${{ github.repository }} – make all"
-    runs-on: ${{ fromJson(inputs.runner_labels) }}
+  make:
+    # Deliberately repo-independent so one org-wide ruleset can require
+    # the same status check ("make-all / make all") in every core repo.
+    name: make ${{ inputs.make_target }}
+    runs-on: ${{ inputs.runs_on }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+
+    container:
+      image: ${{ inputs.container_image }}
+      # Run as root so actions/checkout and actions/cache can write to the
+      # runner-mounted workspace regardless of the image's default user.
+      options: --user root
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ inputs.working_directory }}
+
     steps:
-      - name: Checkout caller repo
-        uses: chiselWare/actions-checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Run make
-        shell: bash
+      - name: Mark workspace as safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Toolchain versions
         run: |
-          set -euo pipefail
-          cd "${{ inputs.make_dir }}"
-          make "${{ inputs.make_target }}"
+          set +e
+          echo "image: ${{ inputs.container_image }}"
+          java -version 2>&1 | head -1
+          sbt --script-version
+          firtool --version | head -1
+          verilator --version
+          yosys -V
+          sby --help >/dev/null 2>&1 && echo "sby: present"
+          exit 0
 
-      - name: Check error report
-        shell: bash
-        run: |
-          set -euo pipefail
-          rpt="error.rpt"
-          if [[ ! -f "$rpt" ]]; then
-            echo "ERROR: missing error report: $rpt"
-            exit 2
-          fi
-          if [[ -s "$rpt" ]]; then
-            echo "ERROR: error report contains errors: $rpt"
-            sed -n '1,200p' "$rpt" || true
-            exit 3
-          fi
-          echo "OK: $rpt exists and is empty."
-
-      - name: Upload error report (always)
-        if: always()
-        uses: chiselWare/actions-upload-artifact@v4
+      # GitHub sets HOME=/github/home inside container jobs, so any caches
+      # pre-seeded in the image user's home are not visible. Cache them here.
+      - name: Cache sbt / coursier / ivy
+        uses: actions/cache@v4
         with:
-          name: regression-error-report
-          path: error.rpt
-          if-no-files-found: error
+          path: |
+            ~/.cache/coursier
+            ~/.ivy2/cache
+            ~/.sbt
+          key: sbt-${{ runner.os }}-${{ hashFiles('**/build.sbt', 'project/build.properties', 'project/*.sbt') }}
+          restore-keys: |
+            sbt-${{ runner.os }}-
 
+      - name: make ${{ inputs.make_target }}
+        run: make ${{ inputs.make_target }}
 
-
+      - name: Upload test outputs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.repository.name }}-${{ inputs.make_target }}-logs
+          path: |
+            ${{ inputs.working_directory }}/test_run_dir/**
+            ${{ inputs.working_directory }}/**/target/test-reports/**
+          if-no-files-found: ignore
+          retention-days: 7
