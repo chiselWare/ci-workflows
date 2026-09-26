@@ -31,6 +31,11 @@ on:
         required: false
         type: string
         default: "."
+      error_report:
+        description: "Report file written by the build (empty on pass), relative to working_directory"
+        required: false
+        type: string
+        default: "error.rpt"
       timeout_minutes:
         description: "Job timeout"
         required: false
@@ -99,13 +104,36 @@ jobs:
       - name: make ${{ inputs.make_target }}
         run: make ${{ inputs.make_target }}
 
-      - name: Upload test outputs on failure
+      # Publish the error report on the run's Summary page. Runs whether
+      # make passed or failed. A non-empty report fails the job even if
+      # make itself returned success.
+      - name: Error report
+        if: always()
+        run: |
+          f="${{ inputs.error_report }}"
+          if [ -s "$f" ]; then
+            {
+              echo "### FAIL: \`$f\` (${{ github.event.repository.name }})"
+              echo '~~~'
+              head -c 900000 "$f"   # step summary limit is 1 MiB
+              echo
+              echo '~~~'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=$f::Regression reported failures. See the run Summary for details."
+            exit 1
+          elif [ -f "$f" ]; then
+            echo "### PASS: \`$f\` is empty" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning title=$f::Report file not found"
+          fi
+
+      - name: Upload reports on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.event.repository.name }}-${{ inputs.make_target }}-logs
           path: |
-            ${{ inputs.working_directory }}/test_run_dir/**
-            ${{ inputs.working_directory }}/**/target/test-reports/**
+            ${{ inputs.working_directory }}/${{ inputs.error_report }}
+            ${{ inputs.working_directory }}/generated/**/*.rpt
           if-no-files-found: ignore
           retention-days: 7
