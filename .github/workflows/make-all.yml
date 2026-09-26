@@ -134,7 +134,7 @@ jobs:
           name: ${{ github.event.repository.name }}-${{ inputs.make_target }}-logs
           path: |
             ${{ inputs.working_directory }}/${{ inputs.error_report }}
-            ${{ inputs.working_directory }}/generated/**/*.rpt
+            ${{ inputs.working_directory }}/modules/*/generated/**/*.rpt
             ${{ inputs.working_directory }}/docs/*.rpt
           if-no-files-found: ignore
           retention-days: 7
